@@ -387,7 +387,13 @@ export const FloatingAssistDock: React.FC = () => {
       )}
 
       {/* Floating Right Dock: Scroll-to-Top + Zalo + Call + AI Chat */}
-      <div className="fixed bottom-20 lg:bottom-6 right-4 sm:right-5 z-40 flex flex-col items-end gap-2.5">
+      <div
+        className={`group/dock fixed bottom-20 lg:bottom-6 right-4 sm:right-5 z-40 flex flex-col items-end gap-2.5 transition-all duration-300 ${
+          chatOpen
+            ? 'opacity-100 grayscale-0'
+            : 'opacity-40 grayscale-[40%] hover:opacity-100 hover:grayscale-0 focus-within:opacity-100 focus-within:grayscale-0'
+        }`}
+      >
         {/* Scroll Back to Top */}
         {showScrollTop && (
           <button
@@ -395,7 +401,7 @@ export const FloatingAssistDock: React.FC = () => {
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             aria-label={t('Lên đầu trang', 'Scroll back to top')}
             title={t('Lên đầu trang', 'Scroll to top')}
-            className="w-11 h-11 rounded-full bg-white/95 dark:bg-[#16221C]/95 text-[#00552B] dark:text-[#C6A667] border border-[#00552B]/25 dark:border-[#C6A667]/35 shadow-lg hover:bg-[#00552B] hover:text-white transition-all flex items-center justify-center cursor-pointer"
+            className="w-11 h-11 rounded-full bg-white/85 dark:bg-[#16221C]/85 backdrop-blur-sm text-[#00552B] dark:text-[#C6A667] border border-[#00552B]/25 dark:border-[#C6A667]/35 shadow-sm group-hover/dock:shadow-lg hover:bg-[#00552B] hover:text-white transition-all flex items-center justify-center cursor-pointer"
           >
             <ArrowUp className="w-4 h-4" />
           </button>
@@ -413,8 +419,8 @@ export const FloatingAssistDock: React.FC = () => {
           <span className="hidden sm:inline-block mr-2 px-2.5 py-1 rounded-lg bg-[#0068FF] text-white text-[11px] font-semibold shadow opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
             Chat Zalo
           </span>
-          <span className="relative w-12 h-12 rounded-full bg-[#0068FF] text-white shadow-lg flex items-center justify-center hover:scale-105 transition-transform">
-            <span className="absolute inset-0 rounded-full bg-[#0068FF]/40 animate-ping" />
+          <span className="relative w-12 h-12 rounded-full bg-[#0068FF]/90 group-hover:bg-[#0068FF] text-white shadow-sm group-hover/dock:shadow-lg flex items-center justify-center group-hover:scale-105 transition-all duration-200">
+            <span className="hidden group-hover:block absolute inset-0 rounded-full bg-[#0068FF]/35 animate-ping" />
             <span className="relative font-extrabold text-[12px] tracking-tight">Zalo</span>
           </span>
         </a>
@@ -429,8 +435,8 @@ export const FloatingAssistDock: React.FC = () => {
           <span className="hidden sm:inline-block mr-2 px-2.5 py-1 rounded-lg bg-[#D92D20] text-white text-[11px] font-mono font-bold shadow opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
             {hotlineRaw}
           </span>
-          <span className="relative w-12 h-12 rounded-full bg-[#D92D20] text-white shadow-lg flex items-center justify-center hover:scale-105 transition-transform">
-            <span className="absolute inset-0 rounded-full bg-[#D92D20]/40 animate-ping" />
+          <span className="relative w-12 h-12 rounded-full bg-[#D92D20]/90 group-hover:bg-[#D92D20] text-white shadow-sm group-hover/dock:shadow-lg flex items-center justify-center group-hover:scale-105 transition-all duration-200">
+            <span className="hidden group-hover:block absolute inset-0 rounded-full bg-[#D92D20]/35 animate-ping" />
             <PhoneCall className="relative w-5 h-5" />
           </span>
         </a>
@@ -446,7 +452,7 @@ export const FloatingAssistDock: React.FC = () => {
           <span className="hidden sm:inline-block mr-2 px-2.5 py-1 rounded-lg bg-[#003D25] text-[#C6A667] border border-[#C6A667]/30 text-[11px] font-semibold shadow opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
             {t('Chat AI Barista', 'AI Barista Chat')}
           </span>
-          <span className="relative w-12 h-12 rounded-full bg-[#00552B] text-[#C6A667] border-2 border-[#C6A667]/70 shadow-xl flex items-center justify-center hover:bg-[#003D25] hover:scale-105 transition-all">
+          <span className="relative w-12 h-12 rounded-full bg-[#00552B] text-[#C6A667] border-2 border-[#C6A667]/70 shadow-sm group-hover/dock:shadow-xl flex items-center justify-center hover:bg-[#003D25] group-hover:scale-105 transition-all duration-200">
             {chatOpen ? <X className="w-5 h-5 text-white" /> : <MessageCircle className="w-5 h-5" />}
             {!chatOpen && (
               <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-[#C6A667] text-[#111111] text-[9px] font-extrabold leading-none">
