@@ -1187,50 +1187,149 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* 9. SIGNATURE RESERVE LUXURY SPOTLIGHT */}
-      <section className="bg-[#0B0B0B] text-[#F8F5EF] py-16">
-        <div className="max-w-[1280px] mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          <div className="lg:col-span-6 space-y-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#C6A667]">
-              {t('Báo Đen · 60% Robusta · 20% Culi · 20% Arabica', 'Black Panther · 60% Robusta · 20% Culi · 20% Arabica')}
-            </p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-white text-balance">
-              ROAR COFFEE SIGNATURE RESERVE
-            </h2>
-            <p className="text-sm sm:text-base text-[#F8F5EF]/80 leading-relaxed">
+      <section className="relative overflow-hidden bg-[#070807] text-[#F8F5EF] py-14 sm:py-20 border-y border-[#C6A667]/20">
+        {/* Subtle atmospheric champagne & forest glow */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(circle at 78% 35%, rgba(198,166,103,0.11), transparent 55%), radial-gradient(circle at 15% 80%, rgba(0,85,43,0.14), transparent 50%)',
+          }}
+        />
+
+        <div className="relative max-w-[1280px] mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+          {/* Left Narrative & Blend Architecture */}
+          <div className="lg:col-span-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="w-8 h-px bg-[#C6A667]" />
+              <p className="text-[11px] sm:text-xs font-semibold uppercase tracking-[0.22em] text-[#C6A667]">
+                {t('Phiên bản Độc bản · Báo Đen', 'Flagship Reserve · Black Panther')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-3xl sm:text-4xl lg:text-[42px] font-bold tracking-tight text-white leading-[1.1] text-balance">
+                ROAR COFFEE{' '}
+                <span className="block text-[#C6A667] font-semibold mt-1">
+                  SIGNATURE RESERVE
+                </span>
+              </h2>
+            </div>
+
+            <p className="text-sm sm:text-base text-[#F8F5EF]/78 leading-relaxed max-w-xl">
               {t(
-                'Tuyệt phẩm sang trọng mang dấu ấn Báo Đen — kết hợp 60% Robusta, 20% Culi và 20% Arabica cùng nguồn nhân xanh CBU chỉ định. Thiết kế hộp quà đen huyền và vàng champagne dành cho thưởng thức tinh tế và quà tặng cấp cao.',
-                'Our flagship Black Panther edition combining 60% Robusta, 20% Culi, and 20% Arabica with specified CBU green beans. Finished in deep obsidian and champagne gold for refined rituals and executive gifting.'
+                'Tuyệt phẩm sang trọng mang dấu ấn Báo Đen — phối trộn kiến trúc từ nhân xanh CBU chỉ định trong diện mạo hộp thiếc đen huyền và vàng champagne dành cho thưởng thức tinh tế và quà tặng cấp cao.',
+                'Our flagship Black Panther edition — an architectural blend anchored by CBU-washed highland lots, presented in matte obsidian and champagne gold for refined rituals and executive gifting.'
               )}
             </p>
-            <div className="flex flex-wrap gap-3 pt-2">
+
+            {/* Precision 60 / 20 / 20 Blend Ratio Architecture */}
+            <div className="space-y-3 pt-1 max-w-xl">
+              <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[#F8F5EF]/55">
+                <span>{t('Tỷ lệ Phối trộn Độc bản', 'Signature Blend Architecture')}</span>
+                <span className="font-mono text-[#C6A667]">60 · 20 · 20</span>
+              </div>
+
+              <div className="h-1.5 rounded-full overflow-hidden flex gap-1 bg-white/5">
+                <div className="h-full bg-[#C6A667] rounded-l-full" style={{ width: '60%' }} />
+                <div className="h-full bg-[#8A7143]" style={{ width: '20%' }} />
+                <div className="h-full bg-[#1C6B45] rounded-r-full" style={{ width: '20%' }} />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 pt-1 border-t border-white/10">
+                <div>
+                  <div className="font-mono text-base sm:text-lg font-bold text-[#C6A667] tabular-nums">60%</div>
+                  <div className="text-xs font-semibold text-white">Robusta S18</div>
+                  <div className="text-[11px] text-[#F8F5EF]/55">{t('Nội lực đậm sánh', 'Commanding body')}</div>
+                </div>
+                <div>
+                  <div className="font-mono text-base sm:text-lg font-bold text-[#D6C39A] tabular-nums">20%</div>
+                  <div className="text-xs font-semibold text-white">Culi Peaberry</div>
+                  <div className="text-[11px] text-[#F8F5EF]/55">{t('Hậu vị nhung lụa', 'Velvety depth')}</div>
+                </div>
+                <div>
+                  <div className="font-mono text-base sm:text-lg font-bold text-[#67B58D] tabular-nums">20%</div>
+                  <div className="text-xs font-semibold text-white">Arabica CBU</div>
+                  <div className="text-[11px] text-[#F8F5EF]/55">{t('Hương hoa thanh lịch', 'Floral lift')}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <Link
                 to={localePath('/signature-reserve')}
-                className="px-6 py-3 bg-[#C6A667] text-[#111111] text-sm font-semibold rounded hover:bg-[#d4b67a] transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-[#C6A667] text-[#111111] text-sm font-bold rounded-lg hover:bg-[#d5b578] transition-colors shadow-lg shadow-[#C6A667]/10"
               >
-                {t('Khám phá Signature Reserve', 'Discover Signature Reserve')}
+                <span>{t('Khám phá Signature Reserve', 'Discover Signature Reserve')}</span>
+                <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
                 to={localePath('/product/signature-reserve')}
-                className="px-6 py-3 border border-[#C6A667]/40 text-[#C6A667] text-sm font-medium rounded hover:bg-[#C6A667]/10 transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 border border-[#C6A667]/40 bg-white/[0.02] text-[#C6A667] text-sm font-medium rounded-lg hover:bg-[#C6A667]/10 hover:border-[#C6A667] transition-colors"
               >
-                {t('Đặt mua ngay', 'Shop Reserve Edition')}
+                <span>{t('Đặt mua ngay', 'Shop Reserve Edition')}</span>
               </Link>
             </div>
           </div>
-          <div className="lg:col-span-6 grid grid-cols-5 gap-4 items-center">
-            <div className="col-span-3 aspect-[4/3] rounded-xl overflow-hidden border border-[#C6A667]/30">
+
+          {/* Right Unified Gallery Stage */}
+          <div className="lg:col-span-6 space-y-3 sm:space-y-4">
+            <div className="group relative aspect-[16/10] rounded-2xl overflow-hidden border border-[#C6A667]/30 bg-[#0D0F0E] shadow-2xl">
               <MediaImage
                 imageKey="product_signature_reserve"
                 alt="ROAR COFFEE Signature Reserve Obsidian & Gold Edition"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
               />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent pointer-events-none" />
+              <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#C6A667]">
+                    Obsidian Canister · Champagne Foil
+                  </p>
+                  <p className="text-sm sm:text-base font-semibold text-white">
+                    {t('Hộp thiếc 250g & Hộp quà Cao cấp 500g', '250g Tin & 500g Luxury Gift Box')}
+                  </p>
+                </div>
+                <span className="hidden sm:inline-block font-mono text-[11px] text-[#F8F5EF]/70 border border-white/15 bg-black/50 backdrop-blur-sm px-2.5 py-1 rounded">
+                  Agtron ~48
+                </span>
+              </div>
             </div>
-            <div className="col-span-2 aspect-square rounded-xl overflow-hidden border border-[#C6A667]/30">
-              <MediaImage
-                imageKey="mascot_panther"
-                alt="Black Panther Crest — Signature Reserve"
-                className="w-full h-full object-cover"
-              />
+
+            <div className="grid grid-cols-12 gap-3 sm:gap-4 items-stretch">
+              <div className="col-span-4 sm:col-span-4 aspect-square rounded-xl overflow-hidden border border-[#C6A667]/30 bg-[#0B0B0B]">
+                <MediaImage
+                  imageKey="mascot_panther"
+                  alt="Black Panther Crest — Signature Reserve"
+                  className="w-full h-full object-cover scale-[1.05]"
+                />
+              </div>
+              <div className="col-span-8 sm:col-span-8 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 flex flex-col justify-between gap-2">
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#C6A667]">
+                    {t('Hồ sơ Hương vị & Quà tặng', 'Tasting & Gifting Notes')}
+                  </p>
+                  <p className="text-xs sm:text-sm font-semibold text-white leading-snug">
+                    {t(
+                      'Cacao đen nguyên chất · Vani ấm · Quả sung sấy · Hậu vị nhung lụa',
+                      'Pure cacao nib · Warm vanilla bean · Dried fig · Silky cashmere finish'
+                    )}
+                  </p>
+                  <p className="text-[11px] sm:text-xs text-[#F8F5EF]/65 leading-relaxed line-clamp-2">
+                    {t(
+                      'Phối trộn chuẩn mực cho Espresso, Phin sang trọng và quà tặng đối tác cao cấp.',
+                      'Calibrated for velvety espresso, refined Phin service, and bespoke corporate gifting.'
+                    )}
+                  </p>
+                </div>
+                <Link
+                  to={localePath('/product/signature-reserve')}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#C6A667] hover:underline pt-1"
+                >
+                  <span>{t('Xem chi tiết thông số & đặt hộp quà →', 'View full specs & gift sets →')}</span>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
