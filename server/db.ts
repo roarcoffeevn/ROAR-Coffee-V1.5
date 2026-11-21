@@ -1423,6 +1423,34 @@ function seedInitialData(): void {
       UNIQUE(user_id, checkin_date),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS gift_voucher_dispatches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      order_number TEXT NOT NULL,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      product_slug TEXT NOT NULL,
+      voucher_code TEXT NOT NULL UNIQUE,
+      purchase_mode TEXT NOT NULL CHECK(purchase_mode IN ('self', 'gift')),
+      delivery_channel TEXT NOT NULL CHECK(delivery_channel IN ('zalo_sms', 'email')),
+      sender_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      sender_name TEXT NOT NULL,
+      sender_email TEXT NOT NULL DEFAULT '',
+      sender_phone TEXT NOT NULL DEFAULT '',
+      recipient_name TEXT NOT NULL,
+      recipient_contact TEXT NOT NULL,
+      gift_message TEXT DEFAULT '',
+      face_value_vnd INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_payment' CHECK(status IN ('pending_payment', 'active', 'redeemed', 'expired', 'cancelled')),
+      redeemed_order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+      redeemed_at TEXT,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_gift_voucher_order ON gift_voucher_dispatches(order_id);
+    CREATE INDEX IF NOT EXISTS idx_gift_voucher_sender ON gift_voucher_dispatches(sender_user_id);
+    CREATE INDEX IF NOT EXISTS idx_gift_voucher_code ON gift_voucher_dispatches(voucher_code);
   `);
 
   // Idempotent Gift Voucher products (50k, 100k, 500k, 1,000,000 VND)

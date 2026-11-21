@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Heart, Search } from 'lucide-react';
+import { ArrowRight, Gift, Heart, Search } from 'lucide-react';
+import { GiftVoucherModal } from '../components/GiftVoucherModal';
 import { MediaImage } from '../components/MediaImage';
 import { RecentlyViewedStrip } from '../components/RecentlyViewedStrip';
 import { useI18n } from '../i18n/I18nContext';
@@ -30,6 +31,8 @@ export const ShopPage: React.FC<ShopPageProps> = ({ defaultCategory = 'all' }) =
   const [kgByProduct, setKgByProduct] = useState<Record<number, number>>({});
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [giftModalProduct, setGiftModalProduct] = useState<Product | null>(null);
+  const [giftModalMode, setGiftModalMode] = useState<'self' | 'gift'>('gift');
 
   useEffect(() => {
     setCategory(urlCat || defaultCategory);
@@ -626,6 +629,58 @@ export const ShopPage: React.FC<ShopPageProps> = ({ defaultCategory = 'all' }) =
                         </div>
                       );
                     })()
+                  ) : p.sub_category === 'Gift Voucher' || p.slug.startsWith('gift-voucher-') ? (
+                    <div className={`${isAllGrid ? 'px-3.5 pb-3.5 pt-2.5 space-y-2' : 'px-5 pb-5 pt-3 space-y-2.5'} border-t border-[#202020]/8 dark:border-white/10`}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className={`${isAllGrid ? 'text-sm' : 'text-base'} font-bold text-[#00552B] dark:text-[#C6A667] tabular-nums`}>
+                          {formatPrice(p.price_vnd, p.price_usd)}
+                        </span>
+                        {!isAllGrid && (
+                          <span className="text-[10px] font-mono text-[#202020]/55 dark:text-[#F1EFEA]/55">
+                            {t('SMS / Zalo · Email', 'SMS / Zalo · Email')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGiftModalMode('gift');
+                            setGiftModalProduct(p);
+                          }}
+                          className={`flex-1 inline-flex items-center justify-center gap-1.5 bg-[#00552B] hover:bg-[#003D25] text-white font-semibold rounded cursor-pointer whitespace-nowrap ${
+                            isAllGrid ? 'px-2 py-1.5 text-[11px]' : 'px-3 py-2 text-xs'
+                          }`}
+                        >
+                          <Gift className="w-3.5 h-3.5 shrink-0" />
+                          <span>{isAllGrid ? t('Tặng', 'Gift') : t('Tặng ngay', 'Send Gift')}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const firstVar = p.variants[0];
+                            addToCart({
+                              productId: p.id,
+                              slug: p.slug,
+                              sku: p.sku,
+                              nameVi: p.name_vi,
+                              nameEn: p.name_en,
+                              variantLabel: firstVar ? firstVar.label : 'Standard',
+                              unitPriceVnd: firstVar ? firstVar.priceVnd : p.price_vnd,
+                              unitPriceUsd: firstVar ? firstVar.priceUsd : p.price_usd,
+                              quantity: 1,
+                              imageKey: p.image_key,
+                            });
+                            showToast(t('Đã thêm vào giỏ hàng', 'Added to cart'));
+                          }}
+                          className={`border border-[#00552B] dark:border-[#C6A667] text-[#00552B] dark:text-[#C6A667] font-semibold rounded hover:bg-[#00552B]/8 cursor-pointer shrink-0 whitespace-nowrap ${
+                            isAllGrid ? 'px-2 py-1.5 text-[11px]' : 'px-3 py-2 text-xs'
+                          }`}
+                        >
+                          {t('+ Giỏ', '+ Cart')}
+                        </button>
+                      </div>
+                    </div>
                   ) : (
                     <div className={`${isAllGrid ? 'px-3.5 pb-3.5 pt-2.5' : 'px-5 pb-5 pt-3'} border-t border-[#202020]/8 dark:border-white/10 flex items-center justify-between gap-2`}>
                       <div className="min-w-0">
@@ -672,6 +727,13 @@ export const ShopPage: React.FC<ShopPageProps> = ({ defaultCategory = 'all' }) =
         );
       })()}
       <RecentlyViewedStrip />
+      <GiftVoucherModal
+        isOpen={Boolean(giftModalProduct)}
+        initialProduct={giftModalProduct}
+        allVoucherProducts={products.filter((item) => item.sub_category === 'Gift Voucher' || item.slug.startsWith('gift-voucher-'))}
+        initialMode={giftModalMode}
+        onClose={() => setGiftModalProduct(null)}
+      />
     </div>
   );
 };

@@ -38,6 +38,7 @@ export const AccountPage: React.FC = () => {
   const [notifFilter, setNotifFilter] = useState<'all' | 'unread' | 'order' | 'promo'>('all');
   const [dash, setDash] = useState<any>(null);
   const [walletData, setWalletData] = useState<any>(null);
+  const [giftDispatches, setGiftDispatches] = useState<any[]>([]);
   const [customTopup, setCustomTopup] = useState('500000');
   const [topupLoading, setTopupLoading] = useState(false);
   const [pendingTopup, setPendingTopup] = useState<{
@@ -137,13 +138,24 @@ export const AccountPage: React.FC = () => {
     setSearchParams({ tab: next }, { replace: true });
   };
 
+  const loadGiftDispatches = async () => {
+    if (!user) return;
+    const res = await apiFetch('/api/gift-vouchers/mine');
+    if (res.ok) {
+      const d = await res.json();
+      setGiftDispatches(d.dispatches || []);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       loadDashboard();
       loadWallet();
+      loadGiftDispatches();
     } else {
       setDash(null);
       setWalletData(null);
+      setGiftDispatches([]);
     }
   }, [user]);
 
@@ -980,6 +992,84 @@ export const AccountPage: React.FC = () => {
               </div>
             ))}
           </div>
+
+          {giftDispatches.length > 0 && (
+            <div className="space-y-4 pt-4 border-t border-[#202020]/10 dark:border-white/10">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold text-[#202020] dark:text-[#F1EFEA]">
+                    {t('E-Voucher Quà Tặng Đã Mua / Được Tặng', 'My Digital Gift Vouchers')}
+                  </h3>
+                  <p className="text-xs text-[#202020]/65 dark:text-[#F1EFEA]/65">
+                    {t('Sử dụng mã ROAR-GIFT-... tại bước thanh toán để trừ trực tiếp mệnh giá vào đơn hàng.', 'Apply any active ROAR-GIFT-... code at checkout.')}
+                  </p>
+                </div>
+                <Link
+                  to={localePath('/coffee/gift-vouchers')}
+                  className="text-xs font-semibold text-[#00552B] dark:text-[#C6A667] hover:underline"
+                >
+                  {t('Mua / Tặng thêm Voucher →', 'Buy / Gift More →')}
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {giftDispatches.map((gd) => (
+                  <div
+                    key={gd.id}
+                    className="rounded-xl border border-[#C6A667]/40 bg-gradient-to-br from-[#0F1B15] to-[#172820] text-[#F1EFEA] p-4 space-y-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[11px] font-mono text-[#C6A667] block">
+                          {gd.purchase_mode === 'gift' ? t('Gửi tặng:', 'Gifted to:') : t('Mua cho tôi:', 'Self:')} {gd.recipient_name} ({gd.recipient_contact})
+                        </span>
+                        <p className="text-base font-bold text-white tabular-nums mt-0.5">
+                          {formatPrice(gd.face_value_vnd)} · {t('HSD', 'Exp')}: {String(gd.expires_at).slice(0, 10)}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                          gd.status === 'active'
+                            ? 'bg-[#00552B] text-white'
+                            : gd.status === 'redeemed'
+                              ? 'bg-white/15 text-white/75'
+                              : 'bg-[#C6A667]/20 text-[#C6A667]'
+                        }`}
+                      >
+                        {gd.status === 'active'
+                          ? t('Sẵn sàng', 'Active')
+                          : gd.status === 'redeemed'
+                            ? t('Đã sử dụng', 'Redeemed')
+                            : gd.status === 'pending_payment'
+                              ? t('Chờ thanh toán', 'Pending Pay')
+                              : gd.status}
+                      </span>
+                    </div>
+                    {gd.gift_message && (
+                      <p className="text-xs italic text-[#F1EFEA]/80 bg-white/5 rounded px-2.5 py-1.5">
+                        “{gd.gift_message}”
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10">
+                      <code className="font-mono text-xs font-bold text-[#C6A667]">{gd.voucher_code}</code>
+                      {gd.status === 'pending_payment' || gd.is_code_masked ? (
+                        <span className="text-[11px] text-[#F1EFEA]/70">
+                          {t('Đợi đối soát để cấp mã', 'Awaiting verification')}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => copyVoucherCode(gd.voucher_code)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] font-semibold cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" /> {t('Sao chép', 'Copy')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -1228,6 +1228,9 @@ app.get('/api/account/dashboard', requireAuth, (req: AuthedRequest, res) => {
         "SELECT oi.*, p.slug as product_slug, p.image_key as product_image_key, p.category as product_category, CASE WHEN p.category = 'roasted_beans' OR (p.pricing_tiers_json IS NOT NULL AND p.pricing_tiers_json != '[]' AND p.pricing_tiers_json != '') THEN 'kg' ELSE 'unit' END as unit FROM order_items oi LEFT JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?"
       )
       .all(o.id),
+    gift_dispatches: maskGiftDispatches(
+      db.prepare('SELECT * FROM gift_voucher_dispatches WHERE order_id = ? ORDER BY id ASC').all(o.id) as any[]
+    ),
   }));
   const now = new Date().toISOString().slice(0, 10);
   const activeVouchers = db
@@ -1460,16 +1463,80 @@ app.get('/api/promotions', (_req, res) => {
   res.json({ promotions: rows });
 });
 
+function maskGiftDispatches(rows: any[]): any[] {
+  return rows.map((row) =>
+    row && row.status === 'pending_payment'
+      ? { ...row, voucher_code: 'ROAR-GIFT-••••-••••', is_code_masked: true }
+      : { ...row, is_code_masked: false }
+  );
+}
+
+function generateGiftVoucherCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const makeSeg = () => {
+    const bytes = crypto.randomBytes(4);
+    let out = '';
+    for (let i = 0; i < 4; i++) {
+      out += alphabet[bytes[i] % alphabet.length];
+    }
+    return out;
+  };
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = `ROAR-GIFT-${makeSeg()}-${makeSeg()}`;
+    const exists = db.prepare('SELECT id FROM gift_voucher_dispatches WHERE voucher_code = ?').get(code);
+    if (!exists) return code;
+  }
+  return `ROAR-GIFT-${Date.now().toString(36).toUpperCase().slice(-8)}`;
+}
+
 app.post('/api/promotions/validate', (req: AuthedRequest, res) => {
   const { code, subtotal } = req.body || {};
   if (!code) {
     res.status(400).json({ error: 'Promo code required' });
     return;
   }
+  const normalizedCode = String(code).trim().toUpperCase();
+  const giftDispatch = db
+    .prepare('SELECT * FROM gift_voucher_dispatches WHERE UPPER(voucher_code) = ?')
+    .get(normalizedCode) as any;
+
+  if (giftDispatch) {
+    if (giftDispatch.status === 'pending_payment') {
+      res.status(400).json({ error: 'E-Voucher quà tặng đang chờ xác nhận thanh toán để kích hoạt.' });
+      return;
+    }
+    if (giftDispatch.status === 'redeemed') {
+      res.status(400).json({ error: 'Mã E-Voucher quà tặng này đã được sử dụng trước đó.' });
+      return;
+    }
+    if (giftDispatch.status === 'cancelled' || giftDispatch.status === 'expired' || new Date(giftDispatch.expires_at).getTime() < Date.now()) {
+      res.status(400).json({ error: 'Mã E-Voucher quà tặng đã hết hạn hoặc đã bị hủy.' });
+      return;
+    }
+    const sub = Number(subtotal || 0);
+    const discountAmount = Math.min(sub > 0 ? sub : giftDispatch.face_value_vnd, Number(giftDispatch.face_value_vnd || 0));
+    res.json({
+      valid: true,
+      isGiftVoucher: true,
+      promo: {
+        id: giftDispatch.id,
+        code: giftDispatch.voucher_code,
+        discount_type: 'fixed',
+        discount_value: giftDispatch.face_value_vnd,
+        title_vi: `Phiếu Quà Tặng ROAR E-Voucher (${Number(giftDispatch.face_value_vnd).toLocaleString('vi-VN')}₫)`,
+        title_en: `ROAR Digital Gift Voucher (${Number(giftDispatch.face_value_vnd).toLocaleString('en-US')} VND)`,
+        terms_vi: `Áp dụng cho ${giftDispatch.recipient_name}. Hạn dùng tới ${String(giftDispatch.expires_at).slice(0, 10)}.`,
+        terms_en: `Issued for ${giftDispatch.recipient_name}. Valid until ${String(giftDispatch.expires_at).slice(0, 10)}.`,
+      },
+      discountAmount,
+    });
+    return;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const promo = db
     .prepare('SELECT * FROM promotions WHERE UPPER(code) = ? AND active = 1 AND start_date <= ? AND end_date >= ?')
-    .get(String(code).trim().toUpperCase(), today, today) as any;
+    .get(normalizedCode, today, today) as any;
 
   if (!promo) {
     res.status(404).json({ error: 'Promotion code not found or expired' });
@@ -1586,23 +1653,35 @@ app.post('/api/orders', (req: AuthedRequest, res) => {
     let shippingFee = baseShippingFee;
     let discountAmount = 0;
     let appliedVoucher = '';
+    let redeemedGiftDispatchId: number | null = null;
 
     if (voucherCode) {
+      const normalizedCode = String(voucherCode).trim().toUpperCase();
       const today = new Date().toISOString().slice(0, 10);
-      const promo = db
-        .prepare('SELECT * FROM promotions WHERE UPPER(code) = ? AND active = 1 AND start_date <= ? AND end_date >= ? AND used_count < usage_limit')
-        .get(String(voucherCode).trim().toUpperCase(), today, today) as any;
-      if (promo && subtotal >= promo.min_order_value && (!promo.member_only || req.authUser)) {
-        appliedVoucher = promo.code;
-        if (promo.discount_type === 'percent') {
-          discountAmount = Math.round((subtotal * promo.discount_value) / 100);
-          if (promo.max_discount > 0) discountAmount = Math.min(discountAmount, promo.max_discount);
-        } else if (promo.discount_type === 'fixed') {
-          discountAmount = Math.min(subtotal, promo.discount_value);
-        } else if (promo.discount_type === 'free_shipping') {
-          shippingFee = 0;
+      const giftDispatch = db
+        .prepare("SELECT * FROM gift_voucher_dispatches WHERE UPPER(voucher_code) = ? AND status = 'active' AND expires_at >= datetime('now')")
+        .get(normalizedCode) as any;
+
+      if (giftDispatch) {
+        appliedVoucher = giftDispatch.voucher_code;
+        discountAmount = Math.min(subtotal, Number(giftDispatch.face_value_vnd || 0));
+        redeemedGiftDispatchId = Number(giftDispatch.id);
+      } else {
+        const promo = db
+          .prepare('SELECT * FROM promotions WHERE UPPER(code) = ? AND active = 1 AND start_date <= ? AND end_date >= ? AND used_count < usage_limit')
+          .get(normalizedCode, today, today) as any;
+        if (promo && subtotal >= promo.min_order_value && (!promo.member_only || req.authUser)) {
+          appliedVoucher = promo.code;
+          if (promo.discount_type === 'percent') {
+            discountAmount = Math.round((subtotal * promo.discount_value) / 100);
+            if (promo.max_discount > 0) discountAmount = Math.min(discountAmount, promo.max_discount);
+          } else if (promo.discount_type === 'fixed') {
+            discountAmount = Math.min(subtotal, promo.discount_value);
+          } else if (promo.discount_type === 'free_shipping') {
+            shippingFee = 0;
+          }
+          db.prepare('UPDATE promotions SET used_count = used_count + 1 WHERE id = ?').run(promo.id);
         }
-        db.prepare('UPDATE promotions SET used_count = used_count + 1 WHERE id = ?').run(promo.id);
       }
     }
 
@@ -1694,6 +1773,14 @@ app.post('/api/orders', (req: AuthedRequest, res) => {
       );
 
     const orderId = Number(orderResult.lastInsertRowid);
+    if (redeemedGiftDispatchId) {
+      const upd = db
+        .prepare("UPDATE gift_voucher_dispatches SET status = 'redeemed', redeemed_order_id = ?, redeemed_at = datetime('now') WHERE id = ? AND status = 'active'")
+        .run(orderId, redeemedGiftDispatchId);
+      if (upd.changes !== 1) {
+        throw new Error('Gift voucher was already redeemed');
+      }
+    }
     const insertItem = db.prepare(`
       INSERT INTO order_items (order_id, product_id, sku, product_name_vi, product_name_en, variant_label, quantity, unit_price_vnd, line_total_vnd)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1764,6 +1851,342 @@ app.post('/api/orders', (req: AuthedRequest, res) => {
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Unable to create order' });
   }
+});
+
+// ---------- GIFTPOP-STYLE GIFT VOUCHER CHECKOUT & DISPATCH ----------
+app.post('/api/gift-vouchers/checkout', (req: AuthedRequest, res) => {
+  const {
+    productId,
+    purchaseMode = 'gift',
+    deliveryChannel = 'zalo_sms',
+    senderName,
+    senderEmail = '',
+    senderPhone = '',
+    recipients = [],
+    selfQuantity = 1,
+    giftMessage = '',
+    promoCode = '',
+    pointsToRedeem = 0,
+    paymentMethod = 'vietqr',
+  } = req.body || {};
+
+  const mode = purchaseMode === 'self' ? 'self' : 'gift';
+  const channel = deliveryChannel === 'email' ? 'email' : 'zalo_sms';
+
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(productId)) as any;
+  if (!product || (product.sub_category !== 'Gift Voucher' && !String(product.slug || '').startsWith('gift-voucher-'))) {
+    res.status(404).json({ error: 'Sản phẩm Gift Voucher không tồn tại' });
+    return;
+  }
+
+  let authUserRow: any = null;
+  if (req.authUser) {
+    authUserRow = db.prepare('SELECT id, full_name, email, phone, wallet_balance_vnd FROM users WHERE id = ?').get(req.authUser.userId);
+  }
+
+  const finalSenderName = String(senderName || authUserRow?.full_name || '').trim();
+  const finalSenderEmail = String(senderEmail || authUserRow?.email || '').trim().toLowerCase();
+  const finalSenderPhone = String(senderPhone || authUserRow?.phone || '').trim();
+
+  if (!finalSenderName || (!finalSenderEmail && !finalSenderPhone)) {
+    res.status(400).json({ error: 'Vui lòng nhập họ tên và số điện thoại hoặc email của người mua.' });
+    return;
+  }
+
+  let normalizedRecipients: Array<{ name: string; contact: string }> = [];
+  if (mode === 'self') {
+    const qty = Math.min(20, Math.max(1, Math.floor(Number(selfQuantity || 1))));
+    const contact = channel === 'email' ? (finalSenderEmail || finalSenderPhone) : (finalSenderPhone || finalSenderEmail);
+    if (!contact) {
+      res.status(400).json({ error: 'Vui lòng nhập thông tin nhận E-Voucher của bạn.' });
+      return;
+    }
+    for (let i = 0; i < qty; i++) {
+      normalizedRecipients.push({ name: finalSenderName, contact });
+    }
+  } else {
+    if (!Array.isArray(recipients) || recipients.length === 0 || recipients.length > 20) {
+      res.status(400).json({ error: 'Vui lòng thêm từ 1 đến 20 người nhận Voucher.' });
+      return;
+    }
+    for (const r of recipients) {
+      const rName = String(r?.name || '').trim();
+      const rContact = String(r?.contact || '').trim();
+      if (!rName || !rContact) {
+        res.status(400).json({ error: 'Mỗi người nhận cần nhập đầy đủ tên và SĐT Zalo hoặc Email.' });
+        return;
+      }
+      normalizedRecipients.push({ name: rName.slice(0, 80), contact: rContact.slice(0, 120) });
+    }
+  }
+
+  const cleanGiftMsg = String(giftMessage || '').trim().slice(0, 300);
+  const allowedMethods = new Set(['vietqr', 'vnpay_qr', 'zalopay', 'momo', 'shopeepay', 'wallet', 'points']);
+  const finalMethod = allowedMethods.has(String(paymentMethod)) ? String(paymentMethod) : 'vietqr';
+
+  const tx = db.transaction(() => {
+    const unitPriceVnd = Number(product.price_vnd || 0);
+    const qty = normalizedRecipients.length;
+    const subtotal = unitPriceVnd * qty;
+    let discountAmount = 0;
+    let appliedPromo = '';
+
+    if (promoCode) {
+      const normalizedCode = String(promoCode).trim().toUpperCase();
+      const today = new Date().toISOString().slice(0, 10);
+      const promo = db
+        .prepare("SELECT * FROM promotions WHERE UPPER(code) = ? AND active = 1 AND start_date <= ? AND end_date >= ? AND used_count < usage_limit AND discount_type != 'free_shipping'")
+        .get(normalizedCode, today, today) as any;
+      if (promo && subtotal >= promo.min_order_value && (!promo.member_only || req.authUser)) {
+        appliedPromo = promo.code;
+        if (promo.discount_type === 'percent') {
+          discountAmount = Math.round((subtotal * promo.discount_value) / 100);
+          if (promo.max_discount > 0) discountAmount = Math.min(discountAmount, promo.max_discount);
+        } else if (promo.discount_type === 'fixed') {
+          discountAmount = Math.min(subtotal, promo.discount_value);
+        }
+        db.prepare('UPDATE promotions SET used_count = used_count + 1 WHERE id = ?').run(promo.id);
+      }
+    }
+
+    let pointsRedeemed = 0;
+    let pointsDiscount = 0;
+    const requestedPoints = Math.max(0, Math.floor(Number(pointsToRedeem || 0)));
+    if (requestedPoints > 0 && req.authUser) {
+      const loyalty = db.prepare('SELECT * FROM loyalty_settings WHERE id = 1').get() as any;
+      const summary = getPointsSummary(req.authUser.userId);
+      const maxDiscountVnd = Math.floor((subtotal * (loyalty?.max_redeem_percent || 30)) / 100);
+      const maxPointsByRule = Math.floor(maxDiscountVnd / (loyalty?.vnd_per_point || 100));
+      pointsRedeemed = Math.min(requestedPoints, summary.available, maxPointsByRule);
+      pointsDiscount = pointsRedeemed * (loyalty?.vnd_per_point || 100);
+    }
+
+    const total = Math.max(0, subtotal - discountAmount - pointsDiscount);
+    const orderNumber = `RC-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    let initialPaymentStatus = 'awaiting_payment';
+    let initialOrderStatus = 'Pending';
+    let dispatchStatus: 'pending_payment' | 'active' = 'pending_payment';
+
+    if (finalMethod === 'wallet') {
+      if (!req.authUser) {
+        throw new Error('Vui lòng đăng nhập để thanh toán bằng Ví Thành viên ROAR.');
+      }
+      const uWallet = db.prepare('SELECT wallet_balance_vnd FROM users WHERE id = ?').get(req.authUser.userId) as any;
+      const currentBal = Number(uWallet?.wallet_balance_vnd || 0);
+      if (currentBal < total) {
+        throw new Error(`Số dư Ví ROAR (${currentBal.toLocaleString('vi-VN')}₫) không đủ để thanh toán (${total.toLocaleString('vi-VN')}₫).`);
+      }
+      db.prepare('UPDATE users SET wallet_balance_vnd = wallet_balance_vnd - ? WHERE id = ?').run(total, req.authUser.userId);
+      db.prepare(`
+        INSERT INTO wallet_transactions (user_id, tx_type, amount_vnd, bonus_vnd, bonus_pct, points_delta, note, reference_code)
+        VALUES (?, 'spend', ?, 0, 0, 0, ?, ?)
+      `).run(req.authUser.userId, -total, `Mua / Tặng Gift Voucher ${orderNumber}`, orderNumber);
+      initialPaymentStatus = 'paid';
+      initialOrderStatus = 'Completed';
+      dispatchStatus = 'active';
+    } else if (finalMethod === 'points') {
+      if (!req.authUser) {
+        throw new Error('Vui lòng đăng nhập để đổi bằng Điểm thưởng ROAR.');
+      }
+      const loyalty = db.prepare('SELECT * FROM loyalty_settings WHERE id = 1').get() as any;
+      const vndPerPoint = Number(loyalty?.vnd_per_point || 100);
+      const summary = getPointsSummary(req.authUser.userId);
+      const pointsNeeded = Math.ceil(total / vndPerPoint);
+      if (summary.available < pointsNeeded) {
+        throw new Error(`Bạn cần ${pointsNeeded.toLocaleString('vi-VN')} điểm để thanh toán (hiện có ${summary.available.toLocaleString('vi-VN')} điểm).`);
+      }
+      pointsRedeemed += pointsNeeded;
+      pointsDiscount += total;
+      initialPaymentStatus = 'paid';
+      initialOrderStatus = 'Completed';
+      dispatchStatus = 'active';
+    } else if (total === 0) {
+      initialPaymentStatus = 'paid';
+      initialOrderStatus = 'Completed';
+      dispatchStatus = 'active';
+    }
+
+    const channelLabel = channel === 'email' ? 'Email' : 'SMS / Zalo';
+    const shippingSummary = `[E-Voucher Digital Dispatch · ${channelLabel}] ${mode === 'gift' ? `Tặng ${qty} người nhận` : 'Mua cho bản thân'}`;
+    const orderNote = [
+      `[Giftpop E-Voucher · ${mode === 'gift' ? 'Mua tặng' : 'Mua cho tôi'} · ${channelLabel}]`,
+      cleanGiftMsg ? `Lời chúc: "${cleanGiftMsg}"` : '',
+      `Người nhận: ${normalizedRecipients.map((r) => `${r.name} (${r.contact})`).join(', ')}`,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    const orderInsert = db
+      .prepare(`
+        INSERT INTO orders (
+          order_number, user_id, customer_name, customer_email, customer_phone, shipping_address,
+          currency, subtotal, discount_amount, points_redeemed, points_discount, shipping_fee, total,
+          voucher_code, payment_method, payment_status, order_status, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, 'VND', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        orderNumber,
+        req.authUser ? req.authUser.userId : null,
+        finalSenderName,
+        finalSenderEmail || `${finalSenderPhone.replace(/\D/g, '') || 'guest'}@evoucher.roarcoffee.vn`,
+        finalSenderPhone || finalSenderEmail,
+        shippingSummary,
+        subtotal,
+        discountAmount,
+        pointsRedeemed,
+        pointsDiscount,
+        total,
+        appliedPromo,
+        finalMethod,
+        initialPaymentStatus,
+        initialOrderStatus,
+        orderNote
+      );
+
+    const orderId = Number(orderInsert.lastInsertRowid);
+    db.prepare(`
+      INSERT INTO order_items (order_id, product_id, sku, product_name_vi, product_name_en, variant_label, quantity, unit_price_vnd, line_total_vnd)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      orderId,
+      product.id,
+      product.sku,
+      product.name_vi,
+      product.name_en,
+      `E-Voucher (${unitPriceVnd.toLocaleString('vi-VN')}₫) · ${channelLabel}`,
+      qty,
+      unitPriceVnd,
+      subtotal
+    );
+
+    if (pointsRedeemed > 0 && req.authUser) {
+      db.prepare(`
+        INSERT INTO points_ledger (user_id, order_id, entry_type, points, description_vi, description_en)
+        VALUES (?, ?, 'redeem', ?, ?, ?)
+      `).run(
+        req.authUser.userId,
+        orderId,
+        -pointsRedeemed,
+        `Quy đổi ${pointsRedeemed} điểm cho đơn Gift Voucher ${orderNumber}`,
+        `Redeemed ${pointsRedeemed} points on Gift Voucher order ${orderNumber}`
+      );
+    }
+
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+    const insertDispatch = db.prepare(`
+      INSERT INTO gift_voucher_dispatches (
+        order_id, order_number, product_id, product_slug, voucher_code, purchase_mode, delivery_channel,
+        sender_user_id, sender_name, sender_email, sender_phone, recipient_name, recipient_contact,
+        gift_message, face_value_vnd, status, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const dispatches: any[] = [];
+    for (const r of normalizedRecipients) {
+      const voucherCode = generateGiftVoucherCode();
+      const ins = insertDispatch.run(
+        orderId,
+        orderNumber,
+        product.id,
+        product.slug,
+        voucherCode,
+        mode,
+        channel,
+        req.authUser ? req.authUser.userId : null,
+        finalSenderName,
+        finalSenderEmail,
+        finalSenderPhone,
+        r.name,
+        r.contact,
+        cleanGiftMsg,
+        unitPriceVnd,
+        dispatchStatus,
+        expiresAt
+      );
+      dispatches.push({
+        id: Number(ins.lastInsertRowid),
+        order_id: orderId,
+        order_number: orderNumber,
+        product_id: product.id,
+        product_slug: product.slug,
+        voucher_code: voucherCode,
+        purchase_mode: mode,
+        delivery_channel: channel,
+        sender_name: finalSenderName,
+        recipient_name: r.name,
+        recipient_contact: r.contact,
+        gift_message: cleanGiftMsg,
+        face_value_vnd: unitPriceVnd,
+        status: dispatchStatus,
+        expires_at: expiresAt,
+      });
+    }
+
+    if (req.authUser) {
+      createUserNotification(req.authUser.userId, {
+        titleVi: dispatchStatus === 'active' ? `Đã kích hoạt ${qty} E-Voucher (${orderNumber})` : `Đã tạo đơn E-Voucher ${orderNumber}`,
+        titleEn: dispatchStatus === 'active' ? `Activated ${qty} E-Voucher(s) (${orderNumber})` : `Gift Voucher order ${orderNumber} created`,
+        messageVi:
+          dispatchStatus === 'active'
+            ? `Các mã quà tặng ${dispatches.map((d) => d.voucher_code).join(', ')} đã sẵn sàng gửi đến người nhận.`
+            : `Đơn quà tặng trị giá ${total.toLocaleString('vi-VN')}₫ đang chờ xác nhận thanh toán QR để kích hoạt mã.`,
+        messageEn:
+          dispatchStatus === 'active'
+            ? `Voucher codes ${dispatches.map((d) => d.voucher_code).join(', ')} are active and ready to share.`
+            : `Gift order totaling ${total.toLocaleString('en-US')} VND is awaiting QR payment verification.`,
+        category: 'promo',
+        linkUrl: '/account?tab=vouchers',
+      });
+    }
+
+    return {
+      order: {
+        orderId,
+        orderNumber,
+        subtotal,
+        discountAmount,
+        pointsDiscount,
+        shippingFee: 0,
+        total,
+        paymentMethod: finalMethod,
+        paymentStatus: initialPaymentStatus,
+        orderStatus: initialOrderStatus,
+        customerEmail: finalSenderEmail || `${finalSenderPhone.replace(/\D/g, '') || 'guest'}@evoucher.roarcoffee.vn`,
+        customerPhone: finalSenderPhone,
+      },
+      dispatches: maskGiftDispatches(dispatches),
+    };
+  });
+
+  try {
+    const result = tx();
+    res.status(201).json({ ok: true, ...result });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Không thể khởi tạo đơn Gift Voucher.' });
+  }
+});
+
+app.get('/api/gift-vouchers/mine', requireAuth, (req: AuthedRequest, res) => {
+  const userRow = db.prepare('SELECT id, email, phone FROM users WHERE id = ?').get(req.authUser!.userId) as any;
+  const rows = db
+    .prepare(`
+      SELECT d.*, p.name_vi as product_name_vi, p.name_en as product_name_en, p.image_key as product_image_key
+      FROM gift_voucher_dispatches d
+      LEFT JOIN products p ON p.id = d.product_id
+      WHERE d.sender_user_id = ?
+         OR (LOWER(d.sender_email) != '' AND LOWER(d.sender_email) = ?)
+         OR (LOWER(d.recipient_contact) != '' AND (LOWER(d.recipient_contact) = ? OR d.recipient_contact = ?))
+      ORDER BY d.id DESC
+      LIMIT 60
+    `)
+    .all(
+      req.authUser!.userId,
+      String(userRow?.email || '').toLowerCase(),
+      String(userRow?.email || '').toLowerCase(),
+      String(userRow?.phone || '')
+    ) as any[];
+  res.json({ dispatches: maskGiftDispatches(rows) });
 });
 
 app.post('/api/orders/:orderNumber/confirm-payment-reference', (req, res) => {
@@ -1878,6 +2301,9 @@ app.get('/api/orders/track', (req, res) => {
         "SELECT oi.*, p.image_key as product_image_key, p.slug as product_slug, p.category as product_category, CASE WHEN p.category = 'roasted_beans' OR (p.pricing_tiers_json IS NOT NULL AND p.pricing_tiers_json != '[]' AND p.pricing_tiers_json != '') THEN 'kg' ELSE 'unit' END as unit FROM order_items oi LEFT JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?"
       )
       .all(o.id),
+    gift_dispatches: maskGiftDispatches(
+      db.prepare('SELECT * FROM gift_voucher_dispatches WHERE order_id = ? ORDER BY id ASC').all(o.id) as any[]
+    ),
   }));
 
   res.json({ orders: enriched, order: enriched[0] });
@@ -2373,6 +2799,11 @@ app.patch('/api/admin/orders/:id', requirePermission('orders'), (req: AuthedRequ
       UPDATE orders SET order_status = ?, payment_status = ?, tracking_code = ?, notes = ?, updated_at = datetime('now') WHERE id = ?
     `).run(nextStatus, nextPayment, nextTracking, nextNotes, id);
 
+    // Activate any digital Gift Vouchers tied to this order once payment is reconciled
+    if (nextPayment === 'paid' && nextStatus !== 'Cancelled' && nextStatus !== 'Returned') {
+      db.prepare("UPDATE gift_voucher_dispatches SET status = 'active' WHERE order_id = ? AND status = 'pending_payment'").run(id);
+    }
+
     // Restock inventory when cancelling or returning from an active order state
     if (
       prevStatus !== nextStatus &&
@@ -2388,6 +2819,7 @@ app.patch('/api/admin/orders/:id', requirePermission('orders'), (req: AuthedRequ
         db.prepare('UPDATE products SET inventory = inventory + ? WHERE id = ?').run(item.quantity, item.product_id);
       }
       db.prepare("DELETE FROM points_ledger WHERE order_id = ? AND entry_type = 'earn_pending'").run(order.id);
+      db.prepare("UPDATE gift_voucher_dispatches SET status = 'cancelled' WHERE order_id = ? AND status IN ('pending_payment', 'active')").run(id);
     }
 
     // Server-side loyalty points settlement: credit on Completed (prevent duplicate credits!), reverse on Cancelled/Returned

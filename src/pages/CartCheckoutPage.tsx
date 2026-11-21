@@ -1563,6 +1563,38 @@ export const OrderTrackPage: React.FC = () => {
                     <span className="tabular-nums">{formatPrice(order.total)}</span>
                   </div>
 
+                  {Array.isArray(order.gift_dispatches) && order.gift_dispatches.length > 0 && (
+                    <div className="rounded-xl bg-[#F8F5EF] dark:bg-[#0E1512] border border-[#00552B]/20 dark:border-[#C6A667]/30 p-4 space-y-2.5 text-xs">
+                      <p className="font-bold text-[#00552B] dark:text-[#C6A667]">
+                        {t(`Danh sách E-Voucher Quà Tặng (${order.gift_dispatches.length})`, `Gift E-Vouchers (${order.gift_dispatches.length})`)}
+                      </p>
+                      <div className="space-y-2">
+                        {order.gift_dispatches.map((gd: any) => (
+                          <div key={gd.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 border-b last:border-b-0 border-[#202020]/10 dark:border-white/10">
+                            <div>
+                              <span className="font-semibold block">
+                                {gd.recipient_name} ({gd.recipient_contact}) · {formatPrice(gd.face_value_vnd)}
+                              </span>
+                              <span className="text-[11px] opacity-70">
+                                {gd.delivery_channel === 'email' ? 'Email' : 'SMS / Zalo'} · {t('HSD', 'Exp')}: {String(gd.expires_at).slice(0, 10)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <code className="font-mono font-bold text-[#00552B] dark:text-[#C6A667]">{gd.voucher_code}</code>
+                              <span className="px-2 py-0.5 rounded bg-[#00552B]/10 dark:bg-[#C6A667]/15 text-[11px] font-semibold">
+                                {gd.status === 'active'
+                                  ? t('Đã kích hoạt', 'Active')
+                                  : gd.status === 'redeemed'
+                                    ? t('Đã dùng', 'Redeemed')
+                                    : t('Đợi nhận Code', 'Pending Code')}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <PaymentQRPanel
                     orderNumber={order.order_number}
                     customerEmail={order.customer_email}

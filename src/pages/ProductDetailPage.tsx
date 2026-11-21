@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Expand, Heart, ShieldAlert, Star, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Expand, Gift, Heart, ShieldAlert, Star, X } from 'lucide-react';
 import { B2BInquiryModal } from '../components/B2BInquiryModal';
+import { GiftVoucherModal } from '../components/GiftVoucherModal';
 import { RecentlyViewedStrip, recordRecentlyViewed } from '../components/RecentlyViewedStrip';
 import { MediaImage } from '../components/MediaImage';
 import { useI18n } from '../i18n/I18nContext';
@@ -9,7 +10,7 @@ import { type Product, useStore } from '../context/StoreContext';
 import { getProductGallery } from '../lib/media';
 import { localizeBrewingMethod, localizeCoffeeType, localizeVariantLabel } from '../lib/i18nHelpers';
 import { resolveVolumeTier } from '../lib/pricing';
-import { fetchProductBySlugWithFallback } from '../lib/staticFallback';
+import { fetchProductBySlugWithFallback, fetchProductsWithFallback } from '../lib/staticFallback';
 
 export const ProductDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -40,6 +41,9 @@ export const ProductDetailPage: React.FC = () => {
   const [reviewComment, setReviewComment] = useState('');
   const [b2bOpen, setB2bOpen] = useState(false);
   const [b2bType, setB2bType] = useState<'sample_request' | 'green_quotation' | 'wholesale_partner'>('wholesale_partner');
+  const [giftModalOpen, setGiftModalOpen] = useState(false);
+  const [giftModalMode, setGiftModalMode] = useState<'self' | 'gift'>('gift');
+  const [voucherCatalog, setVoucherCatalog] = useState<Product[]>([]);
 
   const fetchProduct = () => {
     if (!slug) return;
@@ -114,6 +118,7 @@ export const ProductDetailPage: React.FC = () => {
   const effectiveUnitUsd = activeTier ? activeTier.priceUsd : activeVariant.priceUsd;
   const wished = wishlist.includes(product.slug);
   const isGreen = product.category === 'green_bean';
+  const isGiftVoucher = product.sub_category === 'Gift Voucher' || product.slug.startsWith('gift-voucher-');
 
   const handleAdd = (goCheckout = false) => {
     addToCart({
@@ -515,6 +520,51 @@ export const ProductDetailPage: React.FC = () => {
                 </div>
               )}
 
+              {isGiftVoucher && (
+                <div className="p-4 rounded-xl bg-[#F8F5EF] dark:bg-[#0E1512] border border-[#00552B]/25 dark:border-[#C6A667]/35 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-[#00552B] dark:text-[#C6A667] flex items-center gap-1.5">
+                      <Gift className="w-4 h-4" />
+                      {t('Tặng Voucher điện tử qua SMS / Zalo / Email', 'Instant E-Voucher Gifting via SMS / Zalo / Email')}
+                    </span>
+                    <span className="text-[11px] font-mono text-[#202020]/60 dark:text-[#F1EFEA]/60">
+                      {t('Phí dịch vụ: Miễn phí', 'Service Fee: Free')}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGiftModalMode('gift');
+                        setGiftModalOpen(true);
+                        if (voucherCatalog.length === 0) {
+                          const p = new URLSearchParams({ category: 'gift_voucher' });
+                          fetchProductsWithFallback(p).then(setVoucherCatalog).catch(() => {});
+                        }
+                      }}
+                      className="py-3 px-4 bg-[#00552B] hover:bg-[#003D25] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <Gift className="w-4 h-4" />
+                      <span>{t('Tặng Voucher cho bạn bè', 'Send as a Gift')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGiftModalMode('self');
+                        setGiftModalOpen(true);
+                        if (voucherCatalog.length === 0) {
+                          const p = new URLSearchParams({ category: 'gift_voucher' });
+                          fetchProductsWithFallback(p).then(setVoucherCatalog).catch(() => {});
+                        }
+                      }}
+                      className="py-3 px-4 border border-[#00552B] dark:border-[#C6A667] text-[#00552B] dark:text-[#C6A667] text-xs sm:text-sm font-semibold rounded-lg hover:bg-[#00552B]/8 cursor-pointer transition-colors"
+                    >
+                      {t('Mua E-Voucher cho tôi', 'Buy E-Voucher for Myself')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-3">
                 <div className="flex items-center border border-[#202020]/15 dark:border-white/15 rounded bg-white dark:bg-[#0E1512]">
                   <button
@@ -751,6 +801,14 @@ export const ProductDetailPage: React.FC = () => {
         defaultType={b2bType}
         productSku={product.sku}
         productTitle={lang === 'vi' ? product.name_vi : product.name_en}
+      />
+
+      <GiftVoucherModal
+        isOpen={giftModalOpen}
+        initialProduct={product}
+        allVoucherProducts={voucherCatalog.length > 0 ? voucherCatalog : [product, ...related.filter((r) => r.sub_category === 'Gift Voucher' || r.slug.startsWith('gift-voucher-'))]}
+        initialMode={giftModalMode}
+        onClose={() => setGiftModalOpen(false)}
       />
     </div>
   );
